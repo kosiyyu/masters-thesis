@@ -1,0 +1,25 @@
+[gd_scene load_steps=5 format=3 uid="uid://ds4vwfnaifds"]
+
+[ext_resource type="Shader" uid="uid://dro6lbryj7hj" path="res://common/shaders/player.gdshader" id="1_ue0rj"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_ue0rj"]
+points = PackedVector3Array(-0.5, -0.5, -0.5, 0.5, 0.5, 0.5, 0.5, -0.5, 0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5, -0.5, -0.5, -0.5, -0.5, 0.5, -0.5, 0.5, -0.5)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_sip3s"]
+render_priority = 0
+shader = ExtResource("1_ue0rj")
+shader_parameter/player_color = Color(0.582943, 0.46439, 0.773617, 1)
+shader_parameter/roughness = 0.4
+shader_parameter/metallic = 0.1
+shader_parameter/specular = 0.5
+
+[sub_resource type="BoxMesh" id="BoxMesh_ajc8k"]
+
+[node name="Player" type="CharacterBody3D"]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("ConvexPolygonShape3D_ue0rj")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+material_override = SubResource("ShaderMaterial_sip3s")
+mesh = SubResource("BoxMesh_ajc8k")
