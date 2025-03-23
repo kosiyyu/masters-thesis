@@ -8,11 +8,17 @@ var rng = RandomNumberGenerator.new()
 var current_time = 0.0
 var current_direction = Vector3(0, 0, -1)
 
+enum ColliderType {
+	CSG_COMBINER_3D,
+	CHARACTER_BODY_3D,
+	NULL
+}
+
 func _ready() -> void:
 	rng.randomize()
 
-func _detect_wall_collision() -> Dictionary:
-	var result = {"collided": false, "normal": Vector3.ZERO}
+func _detect_collision() -> Dictionary:
+	var result = {"collided": false, "normal": Vector3.ZERO, "colider_type": ColliderType.NULL}
 	
 	var n: int = get_slide_collision_count()
 	for i in range(n):
@@ -22,8 +28,14 @@ func _detect_wall_collision() -> Dictionary:
 		if collider is CSGCombiner3D:
 			result.collided = true
 			result.normal = collision.get_normal()
+			result.colider_type = ColliderType.CSG_COMBINER_3D
 			break
-	
+		elif collider is CharacterBody3D:
+			result.collided = true
+			result.normal = collision.get_normal()
+			result.colider_type = ColliderType.CHARACTER_BODY_3D
+			break
+
 	return result
 
 func _bounce(wall_normal: Vector3) -> void:
@@ -45,10 +57,15 @@ func _auto_input(delta: float) -> void:
 	
 	move_and_slide()
 
-	var collision_info = _detect_wall_collision()
-	
+	var collision_info = _detect_collision()
 	if collision_info.collided:
 		_bounce(collision_info.normal)
+
+		if (collision_info.colider_type == ColliderType.CSG_COMBINER_3D):
+			print("Player collided with a wall")
+		elif (collision_info.colider_type == ColliderType.CHARACTER_BODY_3D):
+			print("Player collided with another player")
+
 
 func _keyboard_input(delta: float) -> void:
 	var direction: Vector3 = Vector3.ZERO
