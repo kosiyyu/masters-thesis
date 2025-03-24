@@ -3,10 +3,12 @@ extends CharacterBody3D
 @export var speed = 200
 @export var is_auto_mode = true
 @export var time_interval = 2.0
+@export var color = Color(0.0, 0.0, 1.0, 1.0)
 
 var rng = RandomNumberGenerator.new()
 var current_time = 0.0
 var current_direction = Vector3(0, 0, -1)
+var material = StandardMaterial3D.new()
 
 enum ColliderType {
 	CSG_COMBINER_3D,
@@ -17,8 +19,18 @@ enum ColliderType {
 func _ready() -> void:
 	rng.randomize()
 
+	material.albedo_color = color
+	material.metallic = 0.5
+	material.roughness = 0.2
+
+	$MeshInstance3D.set_surface_override_material(0, material)
+
 func _detect_collision() -> Dictionary:
-	var result = {"collided": false, "normal": Vector3.ZERO, "colider_type": ColliderType.NULL}
+	var result: Dictionary = {
+		collided = false,
+		normal = Vector3.ZERO,
+		colider_type = ColliderType.NULL
+	}
 	
 	var n: int = get_slide_collision_count()
 	for i in range(n):
