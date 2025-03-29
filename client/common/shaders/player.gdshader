@@ -7,7 +7,7 @@ uniform float specular : hint_range(0.0, 1.0) = 0.5;
 
 void fragment() {
     ALBEDO = player_color.rgb;
-    
+
     ROUGHNESS = roughness;
     METALLIC = metallic;
     SPECULAR = specular;
