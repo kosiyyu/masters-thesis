@@ -1,14 +1,34 @@
 extends CharacterBody3D
 
+# ===============================
+# EXPORT VARIABLES
+# ===============================
+
 @export var speed = 200
-@export var is_auto_mode = true
+@export var is_auto_mode = false
 @export var time_interval = 2.0
 @export var color = Color(0.0, 0.0, 1.0, 1.0)
 
+# ===============================
+# VARIABLES
+# ===============================
+
+var id: int = 0
 var rng = RandomNumberGenerator.new()
 var current_time = 0.0
 var current_direction = Vector3(0, 0, -1)
 var material = StandardMaterial3D.new()
+
+# ===============================
+# NODES & RESOURCES
+# ===============================
+
+@onready var udp_client = $"../../../NetworkManager/UDPClient"
+const position_data = preload("res://common/scripts/position_data_.gd")
+
+# ===============================
+# DATA STRUCTURES
+# ===============================
 
 enum ColliderType {
 	CSG_COMBINER_3D,
@@ -16,7 +36,12 @@ enum ColliderType {
 	NULL
 }
 
+# ===============================
+# NODE FUNCTIONS
+# ===============================
+
 func _ready() -> void:
+	id = 0
 	rng.randomize()
 
 	material.albedo_color = color
@@ -24,6 +49,18 @@ func _ready() -> void:
 	material.roughness = 0.2
 
 	$MeshInstance3D.set_surface_override_material(0, material)
+
+func _physics_process(delta: float) -> void:
+	if !is_auto_mode:
+		_keyboard_input(delta)
+	else:
+		_auto_input(delta)
+		
+	send_position_data()
+
+# ===============================
+# MOVMENT & COLLISION FUNCTIONS
+# ===============================
 
 func _detect_collision() -> Dictionary:
 	var result: Dictionary = {
@@ -103,8 +140,17 @@ func _keyboard_input(delta: float) -> void:
 	
 	move_and_slide()
 
-func _physics_process(delta: float) -> void:
-	if !is_auto_mode:
-		_keyboard_input(delta)
-	else:
-		_auto_input(delta)
+# ===============================
+# COMMUNICATION FUNCTIONS
+# ===============================
+
+func send_position_data() -> void:
+	var data_str: position_data.PositionData = position_data.PositionData.new(
+		id,
+		position.x,
+		position.y,
+		position.z,
+		rotation_degrees.y)
+	
+	if udp_client:
+		udp_client.send_player_data(data_str.pack_to_bytearray())

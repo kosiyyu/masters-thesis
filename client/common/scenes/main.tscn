@@ -1,6 +1,8 @@
-[gd_scene load_steps=6 format=3 uid="uid://7vjrwuef2qa7"]
+[gd_scene load_steps=8 format=3 uid="uid://7vjrwuef2qa7"]
 
 [ext_resource type="PackedScene" uid="uid://ds4vwfnaifds" path="res://common/scenes/player.tscn" id="1_qyjsu"]
+[ext_resource type="Script" uid="uid://bvf8u7psiw6g8" path="res://common/scripts/udp_client_imp.gd" id="1_wlgxl"]
+[ext_resource type="Script" uid="uid://xbtv0emabi43" path="res://common/scripts/player_tracker.gd" id="2_8wgni"]
 [ext_resource type="Script" uid="uid://srufiyvlwv5x" path="res://common/scripts/player_movement.gd" id="2_83rqg"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_7dm0k"]
@@ -62,11 +64,22 @@ size = Vector3(9, 1, 1)
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 7, 7)
 
-[node name="Player" parent="." instance=ExtResource("1_qyjsu")]
+[node name="NetworkManager" type="Node" parent="."]
+
+[node name="UDPClient" type="Node" parent="NetworkManager"]
+script = ExtResource("1_wlgxl")
+
+[node name="PlayerTracker" type="Node" parent="NetworkManager"]
+script = ExtResource("2_8wgni")
+
+[node name="PlayerManager" type="Node" parent="."]
+
+[node name="LocalPlayer" type="Node" parent="PlayerManager"]
+
+[node name="Player" parent="PlayerManager/LocalPlayer" instance=ExtResource("1_qyjsu")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 script = ExtResource("2_83rqg")
+is_auto_mode = true
 color = Color(0.518028, 0.14113, 0.527279, 1)
 
-[node name="Player2" parent="." instance=ExtResource("1_qyjsu")]
-transform = Transform3D(-5.96046e-08, 0, 1, 0, 1, 0, -1, 0, -5.96046e-08, 0, 1, 2.4)
-script = ExtResource("2_83rqg")
+[node name="RemotePlayers" type="Node" parent="PlayerManager"]
