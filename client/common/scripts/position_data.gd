@@ -5,6 +5,8 @@ enum Command {
   MOVE # 1
 }
 
+var data_interface = preload("res://common/scripts/data_interface.gd").DataInterface
+
 class PositionData:
 	var command_id: int
 	var user_id: int

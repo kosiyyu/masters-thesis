@@ -24,7 +24,7 @@ var material = StandardMaterial3D.new()
 # ===============================
 
 @onready var udp_client = $"../../../NetworkManager/UDPClient"
-const position_data = preload("res://common/scripts/position_data_.gd")
+const position_data = preload("res://common/scripts/position_data.gd")
 
 # ===============================
 # DATA STRUCTURES
