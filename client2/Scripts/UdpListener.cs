@@ -1,82 +1,100 @@
-using C = Command;
 using Godot;
 using System;
-using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
+using Data;
+using BU = BinaryUtils;
+using C = Command;
+using System.Net;
 
-public partial class UdpListener<T> : Node
+public partial class UdpListener : CharacterBody3D
 {
-    private const int _receivePort = 55555;
+    private const int _serverPort = 9000;
+    private const int _clientPortReceive = 22222;
+    private const int _clientPortSend = 33333;
+    private const string _serverAddress = "127.0.0.1";
     private const int _tickMs = 10;
-    private bool _isListening = false;
-    private UdpClient _udpClient;
+    private bool _isRunning = false;
+
+    private IPEndPoint _serverIP;
+    private UdpClient _udpClientReceive;
+    private UdpClient _udpClientSend;
+
+    private byte _dummyUserID = 13;
+    private CharacterBody3D _player;
+
+    public override void _PhysicsProcess(double delta)
+    {
+        Vector3 velocity = Velocity;
+        Vector3 direction = Vector3.Zero;
+
+        if (Input.IsActionPressed("ui_up")) direction += -Transform.Basis.Z;
+        if (Input.IsActionPressed("ui_down")) direction += Transform.Basis.Z;
+        if (Input.IsActionPressed("ui_left")) direction += -Transform.Basis.X;
+        if (Input.IsActionPressed("ui_right")) direction += Transform.Basis.X;
+
+        if (direction != Vector3.Zero)
+        {
+            direction = direction.Normalized();
+            velocity.X = direction.X * 10;
+            velocity.Z = direction.Z * 10;
+        }
+        else
+        {
+            velocity.X = Mathf.Lerp(velocity.X, 0f, 0.2f);
+            velocity.Z = Mathf.Lerp(velocity.Z, 0f, 0.2f);
+        }
+
+        Velocity = velocity;
+        MoveAndSlide();
+    }
 
     public override void _Ready()
     {
-        _udpClient = new UdpClient(_receivePort);
-        _isListening = true;
-        _startListening();
+        _player = GetNode<CharacterBody3D>(".");
+        _serverIP = new IPEndPoint(IPAddress.Parse(_serverAddress), _serverPort);
+        _udpClientReceive = new UdpClient(_clientPortReceive);
+        _udpClientSend = new UdpClient(_clientPortSend);
+        _isRunning = true;
+        _run();
     }
 
-    private void _sendData(T data, string ipAddress, int port)
+    private async Task _receiveData()
     {
-        try
-        {
-            using (var sendClient = new UdpClient())
-            {
-                byte[] byteData = _convertToByteArray(data);
-
-                IPEndPoint endPoint = new IPEndPoint(IPAddress.Parse(ipAddress), port);
-                sendClient.Send(byteData, byteData.Length, endPoint);
-            }
-        }
-        catch (Exception e)
-        {
-            GD.PrintErr($"Error sending data: {e.Message}");
-        }
+        UdpReceiveResult result = await _udpClientReceive.ReceiveAsync();
+        var positionData = BU.BinaryUtils.DeserializePositionData(result.Buffer);
+        GD.Print($"Received from server: {positionData}");
     }
 
-    private byte[] _convertToByteArray(T data)
+    private async Task _sendData()
     {
-        throw new NotImplementedException("You must override ConvertToByteArray in a derived class");
+        var positionData = new PositionData()
+        {
+            CommandID = C.Command.POSITION,
+            UserID = _dummyUserID,
+            X = _player.Position.X,
+            Y = _player.Position.Y,
+            Z = _player.Position.Z,
+            RotY = _player.Rotation.Y,
+        };
+        var byteArray = BU.BinaryUtils.SerializePositionData(positionData);
+
+        await _udpClientSend.SendAsync(byteArray, byteArray.Length, _serverIP);
+
+        GD.Print($"Sent data: {positionData}");
     }
 
-    private T _convertFromByteArray(byte[] byteArray)
+    private async void _run()
     {
-        throw new NotImplementedException("You must override ConvertFromByteArray in a derived class");
-    }
-
-    private void _receiveData(byte[] byteArray)
-    {
-        if (byteArray.Length < 1)
-        {
-            throw new ArgumentException("ByteArray length is lesser that 1");
-        }
-
-        if (byteArray[0] == (byte)C.Command.MOVE)
-        {
-            // MOVE LOGIC
-        }
-
-        if (byteArray[0] == (byte)C.Command.POSITION)
-        {
-            // MOVE POSITION
-        }
-
-    }
-
-
-    private async void _startListening()
-    {
-        while (_isListening)
+        while (_isRunning)
         {
             try
             {
-                if (_udpClient.Available > 0)
+                await _sendData();
+
+                if (_udpClientReceive.Available > 0)
                 {
-                    UdpReceiveResult result = await _udpClient.ReceiveAsync();
-                    _receiveData(result.Buffer);
+                    await _receiveData();
                 }
             }
             catch (ObjectDisposedException e)
@@ -91,5 +109,12 @@ public partial class UdpListener<T> : Node
 
             await Task.Delay(_tickMs);
         }
+    }
+
+    public override void _ExitTree()
+    {
+        _isRunning = false;
+        _udpClientReceive?.Close();
+        _udpClientSend?.Close();
     }
 }

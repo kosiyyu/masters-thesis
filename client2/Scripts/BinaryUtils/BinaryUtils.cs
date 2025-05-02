@@ -1,7 +1,10 @@
+namespace BinaryUtils;
+
 using System;
 using C = Command;
 using D = Direction;
 using Data;
+using System.IO;
 
 public static class BinaryUtils
 {
@@ -66,6 +69,8 @@ public static class BinaryUtils
         return (D.Direction)byteArray[startIndex];
     }
 
+    #region PositionData
+
     public static PositionData DeserializePositionData(in byte[] byteArray)
     {
         if (byteArray.Length < 18) // (1 + 1 + 4 + 4 + 4 + 4) bytes
@@ -84,6 +89,26 @@ public static class BinaryUtils
         };
     }
 
+    public static byte[] SerializePositionData(PositionData positionData)
+    {
+        using (var memoryStream = new MemoryStream())
+        using (var writer = new BinaryWriter(memoryStream))
+        {
+            writer.Write((byte)positionData.CommandID);
+            writer.Write(positionData.UserID);
+            writer.Write(positionData.X);
+            writer.Write(positionData.Y);
+            writer.Write(positionData.Z);
+            writer.Write(positionData.RotY);
+
+            return memoryStream.ToArray();
+        }
+    }
+
+    #endregion
+
+    #region MoveData
+
     public static MoveData DeserializeMoveData(in byte[] byteArray)
     {
         if (byteArray.Length < 7) // (1 + 1 + 1 + 4) bytes
@@ -99,4 +124,20 @@ public static class BinaryUtils
             Speed = _getFloat(in byteArray, 3) // index 3 - 6
         };
     }
+
+    public static byte[] SerializeMoveData(MoveData moveData)
+    {
+        using (var memoryStream = new MemoryStream())
+        using (var writer = new BinaryWriter(memoryStream))
+        {
+            writer.Write((byte)moveData.CommandID);
+            writer.Write(moveData.UserID);
+            writer.Write((byte)moveData.DirectionID);
+            writer.Write(moveData.Speed);
+
+            return memoryStream.ToArray();
+        }
+    }
+
+    #endregion
 }
