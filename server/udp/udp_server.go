@@ -72,7 +72,7 @@ func (u *Udp) Run() {
 
 func convUint8(reader *bytes.Reader) (uint8, error) {
 	var num uint8
-	err := binary.Read(reader, binary.BigEndian, &num)
+	err := binary.Read(reader, binary.LittleEndian, &num)
 	if err != nil {
 		return 0, errors.New("Error during converting uint8.")
 	}
@@ -81,7 +81,7 @@ func convUint8(reader *bytes.Reader) (uint8, error) {
 
 func convFloat32(reader *bytes.Reader) (float32, error) {
 	var num float32
-	err := binary.Read(reader, binary.BigEndian, &num)
+	err := binary.Read(reader, binary.LittleEndian, &num)
 	if err != nil {
 		return 0, errors.New("Error during converting float32.")
 	}
