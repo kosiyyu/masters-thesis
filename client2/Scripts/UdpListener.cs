@@ -62,13 +62,45 @@ public partial class UdpListener : CharacterBody3D
     private async Task _receiveData()
     {
         UdpReceiveResult result = await _udpClientReceive.ReceiveAsync();
-        var positionData = BU.BinaryUtils.DeserializePositionData(result.Buffer);
-        GD.Print($"Received from server: {positionData}");
+        if (result.Buffer is null)
+        {
+            GD.PushError($"Received buffer is null.");
+            return;
+        }
+
+        var byteArray = result.Buffer;
+        var command = BU.BinaryUtils.GetCommand(in byteArray);
+        switch (command)
+        {
+            case C.Command.DEFAULT_RTT:
+                var defaultRTT = BU.BinaryUtils.DeserializeDefaultRTT(result.Buffer);
+                GD.Print($"{command} | Received: {defaultRTT}");
+                break;
+            case C.Command.MOVE:
+                var moveData = BU.BinaryUtils.DeserializeMoveData(result.Buffer);
+                GD.Print($"{command} | Received: {moveData}");
+                break;
+            case C.Command.POSITION:
+                var positionData = BU.BinaryUtils.DeserializePositionData(result.Buffer);
+                GD.Print($"{command} | Received: {positionData}");
+                break;
+            case C.Command.MOVE_RTT:
+                var moveDataRTT = BU.BinaryUtils.DeserializeMoveDataRTT(result.Buffer);
+                GD.Print($"{command} | Received: {moveDataRTT}");
+                break;
+            case C.Command.POSITION_RTT:
+                var positionDataRTT = BU.BinaryUtils.DeserializePositionDataRTT(result.Buffer);
+                GD.Print($"{command} | Received: {positionDataRTT}");
+                break;
+            default:
+                GD.PushError("Unknown command.");
+                break;
+        }
     }
 
     private async Task _sendData()
     {
-        var positionData = new PositionData()
+        var positionDataRTT = new PositionDataRTT()
         {
             CommandID = C.Command.POSITION,
             UserID = _dummyUserID,
@@ -76,12 +108,13 @@ public partial class UdpListener : CharacterBody3D
             Y = _player.Position.Y,
             Z = _player.Position.Z,
             RotY = _player.Rotation.Y,
+            TimestampRTT = (uint)Time.GetTicksUsec()
         };
-        var byteArray = BU.BinaryUtils.SerializePositionData(positionData);
+        var byteArray = BU.BinaryUtils.SerializePositionDataRTT(positionDataRTT);
 
         await _udpClientSend.SendAsync(byteArray, byteArray.Length, _serverIP);
 
-        GD.Print($"Sent data: {positionData}");
+        GD.Print($"Sent data: {positionDataRTT}");
     }
 
     private async void _run()
