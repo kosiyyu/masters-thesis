@@ -74,7 +74,7 @@ func convUint8(reader *bytes.Reader) (uint8, error) {
 	var num uint8
 	err := binary.Read(reader, binary.LittleEndian, &num)
 	if err != nil {
-		return 0, errors.New("Error during converting uint8.")
+		return 0, errors.New("error during converting uint8,")
 	}
 	return num, nil
 }
@@ -83,7 +83,7 @@ func convFloat32(reader *bytes.Reader) (float32, error) {
 	var num float32
 	err := binary.Read(reader, binary.LittleEndian, &num)
 	if err != nil {
-		return 0, errors.New("Error during converting float32.")
+		return 0, errors.New("error during converting float32")
 	}
 	return num, nil
 }
@@ -94,7 +94,7 @@ const FixedFieldCount = 2
 func extractData(byteArray []byte) (interface{}, error) {
 	reader := bytes.NewReader(byteArray)
 	if len(byteArray) < FixedFieldCount {
-		return nil, errors.New("Byte array need to consit of command ID and user ID.")
+		return nil, errors.New("byte array need to consit of command ID and user ID")
 	}
 
 	// CommandID is of type Command but it's baslicy uint8, later on it's being converted into a propper type
@@ -114,7 +114,7 @@ func extractData(byteArray []byte) (interface{}, error) {
 		expectedRemainingSize := 16
 		n := len(byteArray)
 		if n-FixedFieldCount < expectedRemainingSize {
-			return nil, errors.New("Byte array is too short, expected " + strconv.Itoa(expectedRemainingSize) + " bytes, received " + strconv.Itoa(n) + " bytes")
+			return nil, errors.New("byte array is too short, expected " + strconv.Itoa(expectedRemainingSize) + " bytes, received " + strconv.Itoa(n) + " bytes")
 		}
 
 		x, err := convFloat32(reader)
@@ -170,6 +170,6 @@ func extractData(byteArray []byte) (interface{}, error) {
 			Speed:       speed,
 		}, nil
 	default:
-		return nil, errors.New("Unknown data")
+		return nil, errors.New("unknown data")
 	}
 }
