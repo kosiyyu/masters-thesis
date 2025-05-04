@@ -2,21 +2,23 @@ package udp
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
 	"os"
+	b "server/utils/binary"
 	"server/utils/command"
 	"server/utils/data"
-	"server/utils/direction"
-	"strconv"
+	"time"
 )
 
 type Udp struct {
 	conn *net.UDPConn
 	addr string
+	tick time.Duration
 }
+
+const TICK_CONSTANT_MS = 1
 
 func NewUdp(addr string) *Udp {
 	if len(os.Args) > 1 {
@@ -39,6 +41,7 @@ func NewUdp(addr string) *Udp {
 	return &Udp{
 		conn: conn,
 		addr: addr,
+		tick: TICK_CONSTANT_MS * time.Millisecond,
 	}
 }
 
@@ -53,123 +56,98 @@ func (u *Udp) Run() {
 			continue
 		}
 
-		_, err = extractData(buffer[:n])
-		if err != nil {
-			fmt.Println("Error during extracting data from the message:", err)
-		}
+		handleData(u.conn, clientAddr, n, buffer[:n])
 
-		fmt.Printf("Received %d bytes from %s\n", n, clientAddr)
-
-		content, err := extractData(buffer[:n])
-		if err != nil {
-			fmt.Println("Error during extracting data from the message:", err)
-		} else {
-			// Print the extracted data
-			fmt.Printf("Received data: %+v\n", content)
-		}
+		time.Sleep(u.tick)
 	}
 }
 
-func convUint8(reader *bytes.Reader) (uint8, error) {
-	var num uint8
-	err := binary.Read(reader, binary.LittleEndian, &num)
+func handleData(conn *net.UDPConn, clientAddr *net.UDPAddr, n int, byteArray []byte) {
+	value, commandID, err := deserializeData(byteArray)
 	if err != nil {
-		return 0, errors.New("error during converting uint8,")
+
 	}
-	return num, nil
+
+	switch commandID {
+	case command.POSITION:
+		positionData, ok := value.(data.PositionData)
+		if !ok {
+			fmt.Printf("Error during receiving %v data. Received %d bytes from %s\n", commandID, n, clientAddr)
+		}
+		data.PositionData.Print(positionData)
+	case command.POSITION_RTT:
+		positionDataRTT, ok := value.(data.PositionDataRTT)
+		if !ok {
+			fmt.Printf("Error during receiving %v data.", commandID)
+		}
+		data.PositionDataRTT.Print(positionDataRTT)
+		sendRTTResponse(conn, clientAddr, positionDataRTT.TimestampRTT)
+	case command.MOVE:
+		moveData, ok := value.(data.MoveData)
+		if !ok {
+			fmt.Printf("Error during receiving %v data.", commandID)
+		}
+		data.MoveData.Print(moveData)
+	case command.MOVE_RTT:
+		moveDataRTT, ok := value.(data.MoveDataRTT)
+		if !ok {
+			fmt.Printf("Error during receiving %v data.", commandID)
+		}
+		data.MoveDataRTT.Print(moveDataRTT)
+		sendRTTResponse(conn, clientAddr, moveDataRTT.TimestampRTT)
+	}
 }
 
-func convFloat32(reader *bytes.Reader) (float32, error) {
-	var num float32
-	err := binary.Read(reader, binary.LittleEndian, &num)
+func sendRTTResponse(conn *net.UDPConn, clientAddr *net.UDPAddr, timestampRTT uint32) {
+	// Create response with client's RECEIVE port (22222)
+	responseAddr := &net.UDPAddr{
+		IP:   clientAddr.IP,
+		Port: 22222, // Explicitly send to client's receive port
+	}
+
+	defaultRTT := data.DefaultRTT{
+		CommandID:    command.DEFAULT_RTT,
+		TimestampRTT: timestampRTT,
+	}
+
+	byteArray, err := b.SerializeDefaultRTT(defaultRTT)
 	if err != nil {
-		return 0, errors.New("error during converting float32")
+		fmt.Println("Serialization error:", err)
+		return
 	}
-	return num, nil
+
+	_, err = conn.WriteToUDP(byteArray, responseAddr)
+	if err != nil {
+		fmt.Println("Send error:", err)
+		return
+	}
+
+	// fmt.Printf("Sent RTT response to %s:%d (Timestamp: %d)\n", responseAddr.IP, responseAddr.Port, timestampRTT)
 }
 
-const FixedFieldCount = 2
-
-// This function extaract raw data into well defined structs, CommandID and UserID are always present inside a struct
-func extractData(byteArray []byte) (interface{}, error) {
+// This function deserialize raw data into well defined structs, CommandID and UserID are always present inside a struct
+func deserializeData(byteArray []byte) (interface{}, command.Command, error) {
 	reader := bytes.NewReader(byteArray)
-	if len(byteArray) < FixedFieldCount {
-		return nil, errors.New("byte array need to consit of command ID and user ID")
-	}
 
-	// CommandID is of type Command but it's baslicy uint8, later on it's being converted into a propper type
-	commandID, err := convUint8(reader)
+	var commandID, err = b.GetCommand(byteArray)
 	if err != nil {
-		return nil, err
-	}
-
-	userID, err := convUint8(reader)
-	if err != nil {
-		return nil, err
+		return nil, 0, err // NIL or NULL must be added to enum
 	}
 
 	switch command.Command(commandID) {
 	case command.POSITION:
-		// 4 * float32(4)
-		expectedRemainingSize := 16
-		n := len(byteArray)
-		if n-FixedFieldCount < expectedRemainingSize {
-			return nil, errors.New("byte array is too short, expected " + strconv.Itoa(expectedRemainingSize) + " bytes, received " + strconv.Itoa(n) + " bytes")
-		}
-
-		x, err := convFloat32(reader)
-		if err != nil {
-			return nil, err
-		}
-
-		y, err := convFloat32(reader)
-		if err != nil {
-			return nil, err
-		}
-
-		z, err := convFloat32(reader)
-		if err != nil {
-			return nil, err
-		}
-
-		rotY, err := convFloat32(reader)
-		if err != nil {
-			return nil, err
-		}
-
-		return data.PositionData{
-			CommandID: command.Command(commandID),
-			UserID:    userID,
-			X:         x,
-			Y:         y,
-			Z:         z,
-			RotY:      rotY,
-		}, nil
+		value, err := b.DeserializePostitionData(reader)
+		return value, commandID, err
 	case command.MOVE:
-		// uint8(1) + float32(4)
-		expectedRemainingSize := 5
-		n := len(byteArray)
-		if n-FixedFieldCount < expectedRemainingSize {
-			return nil, errors.New("Byte array is too short, expected " + strconv.Itoa(expectedRemainingSize) + " bytes, received " + strconv.Itoa(n) + " bytes")
-		}
-
-		directionID, err := convUint8(reader)
-		if err != nil {
-			return nil, err
-		}
-
-		speed, err := convFloat32(reader)
-		if err != nil {
-			return nil, err
-		}
-
-		return data.MoveData{
-			CommandID:   command.Command(commandID),
-			UserID:      userID,
-			DirectionID: direction.Direction(directionID),
-			Speed:       speed,
-		}, nil
+		value, err := b.DeserializeMoveData(reader)
+		return value, commandID, err
+	case command.POSITION_RTT:
+		value, err := b.DeserializePostitionDataRTT(reader)
+		return value, commandID, err
+	case command.MOVE_RTT:
+		value, err := b.DeserializeMoveDataRTT(reader)
+		return value, commandID, err
 	default:
-		return nil, errors.New("unknown data")
+		return nil, 0, errors.New("unknown data") // NIL or NULL must be added to enum
 	}
 }
