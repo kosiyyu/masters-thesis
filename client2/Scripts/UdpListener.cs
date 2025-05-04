@@ -14,7 +14,7 @@ public partial class UdpListener : CharacterBody3D
     private const int _clientPortReceive = 22222;
     private const int _clientPortSend = 33333;
     private const string _serverAddress = "127.0.0.1";
-    private const int _tickMs = 50;
+    private const int _tickMs = 1;
 
     private IPEndPoint _serverIP;
     private UdpClient _udpClientReceive;
@@ -105,19 +105,29 @@ public partial class UdpListener : CharacterBody3D
     {
         try
         {
-            var receiveTask = _udpClientReceive.ReceiveAsync();
-            var timeoutTask = Task.Delay(1);
+            // var receiveTask = _udpClientReceive.ReceiveAsync();
+            // var timeoutTask = Task.Delay(1);
 
-            if (await Task.WhenAny(receiveTask, timeoutTask) == receiveTask)
+            // if (await Task.WhenAny(receiveTask, timeoutTask) == receiveTask)
+            // {
+            //     var result = receiveTask.Result;
+            //     var byteArray = result.Buffer;
+            //     var command = BU.BinaryUtils.GetCommand(in byteArray);
+
+            //     if (command == C.Command.DEFAULT_RTT)
+            //     {
+            //         HandleRttResponse(byteArray);
+            //     }
+            // }
+
+            var result = await _udpClientReceive.ReceiveAsync();
+
+            var byteArray = result.Buffer;
+            var command = BU.BinaryUtils.GetCommand(in byteArray);
+
+            if (command == C.Command.DEFAULT_RTT)
             {
-                var result = receiveTask.Result;
-                var byteArray = result.Buffer;
-                var command = BU.BinaryUtils.GetCommand(in byteArray);
-
-                if (command == C.Command.DEFAULT_RTT)
-                {
-                    HandleRttResponse(byteArray);
-                }
+                HandleRttResponse(byteArray);
             }
         }
         catch (Exception e)
