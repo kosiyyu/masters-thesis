@@ -1,62 +1,22 @@
 namespace BinaryUtils;
 
 using System;
+using System.Buffers;
 using C = Command;
 using D = Direction;
 using Data;
 using System.IO;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 public static class BinaryUtils
 {
-    #region _get used types
-
-    private static byte _getByte(in byte[] byteArray, int startIndex)
-    {
-        if (startIndex + 1 > byteArray.Length)
-        {
-            throw new ArgumentException("Byte array should have at least 1 byte.");
-        }
-        if (startIndex < 0 || startIndex > byteArray.Length - 1)
-        {
-            throw new ArgumentException("Start index value is incorrect.");
-        }
-
-        return byteArray[startIndex];
-
-    }
-
-    private static float _getFloat(in byte[] byteArray, int startIndex)
-    {
-        if (startIndex + 4 > byteArray.Length)
-        {
-            throw new ArgumentException("Byte array should have at least 4 bytes.");
-        }
-        if (startIndex < 0 || startIndex > byteArray.Length - 1)
-        {
-            throw new ArgumentException("Start index value is incorrect.");
-        }
-
-        return BitConverter.ToSingle(byteArray, startIndex);
-    }
-
-    private static uint _getUInt(in byte[] byteArray, int startIndex)
-    {
-        if (startIndex + 4 > byteArray.Length)
-        {
-            throw new ArgumentException("Byte array should have at least 4 bytes.");
-        }
-        if (startIndex < 0 || startIndex > byteArray.Length - 1)
-        {
-            throw new ArgumentException("Start index value is incorrect.");
-        }
-
-        return BitConverter.ToUInt32(byteArray, startIndex);
-    }
-
-    #endregion
+    // Static buffer pools for serialization to avoid GC allocations
+    private static readonly ArrayPool<byte> _bytePool = ArrayPool<byte>.Shared;
 
     #region _get complex types
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static C.Command GetCommand(in byte[] byteArray)
     {
         if (byteArray.Length < 1)
@@ -64,27 +24,16 @@ public static class BinaryUtils
             throw new ArgumentException("Byte array should have at least one byte.");
         }
 
-        var value = byteArray[0];
-        return value switch
-        {
-            (byte)C.Command.MOVE => C.Command.MOVE,
-            (byte)C.Command.POSITION => C.Command.POSITION,
-            (byte)C.Command.MOVE_RTT => C.Command.MOVE_RTT,
-            (byte)C.Command.POSITION_RTT => C.Command.POSITION_RTT,
-            (byte)C.Command.DEFAULT_RTT => C.Command.DEFAULT_RTT,
-            _ => throw new ArgumentException($"Unknown command value: {value}")
-        };
+        byte value = byteArray[0];
+        return (C.Command)value;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static D.Direction _getDirection(in byte[] byteArray, int startIndex)
     {
-        if (byteArray.Length < 1)
+        if (startIndex < 0 || startIndex >= byteArray.Length)
         {
-            throw new ArgumentException("Byte array should have at least one byte.");
-        }
-        if (startIndex < 0 || startIndex > byteArray.Length - 1)
-        {
-            throw new ArgumentException("Start index value is incorrect.");
+            throw new ArgumentException("Invalid start index for direction.");
         }
 
         return (D.Direction)byteArray[startIndex];
@@ -94,6 +43,7 @@ public static class BinaryUtils
 
     #region PositionData
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static PositionData DeserializePositionData(in byte[] byteArray)
     {
         if (byteArray.Length < 18) // (1 + 1 + 4 + 4 + 4 + 4) bytes
@@ -101,30 +51,49 @@ public static class BinaryUtils
             throw new ArgumentException("Byte array is too short to deserialize PositionData.");
         }
 
+        // Span<T> for more efficient memory access
+        ReadOnlySpan<byte> dataSpan = byteArray;
+
         return new PositionData()
         {
-            CommandID = GetCommand(in byteArray), // index 0
-            UserID = _getByte(in byteArray, 1), // index 1
-            X = _getFloat(in byteArray, 2), // index 2 - 5
-            Y = _getFloat(in byteArray, 6), // index 6 - 9 
-            Z = _getFloat(in byteArray, 10), // index 10 - 13
-            RotY = _getFloat(in byteArray, 14) // index 14 - 17
+            CommandID = (C.Command)dataSpan[0],
+            UserID = dataSpan[1],
+            X = BitConverter.ToSingle(dataSpan.Slice(2, 4)),
+            Y = BitConverter.ToSingle(dataSpan.Slice(6, 4)),
+            Z = BitConverter.ToSingle(dataSpan.Slice(10, 4)),
+            RotY = BitConverter.ToSingle(dataSpan.Slice(14, 4))
         };
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte[] SerializePositionData(PositionData positionData)
     {
-        using (var memoryStream = new MemoryStream())
-        using (var writer = new BinaryWriter(memoryStream))
-        {
-            writer.Write((byte)positionData.CommandID);
-            writer.Write(positionData.UserID);
-            writer.Write(positionData.X);
-            writer.Write(positionData.Y);
-            writer.Write(positionData.Z);
-            writer.Write(positionData.RotY);
+        // Get buffer from pool
+        byte[] buffer = _bytePool.Rent(18);
 
-            return memoryStream.ToArray();
+        try
+        {
+            Span<byte> span = buffer.AsSpan(0, 18);
+
+            // Write data directly to span
+            span[0] = (byte)positionData.CommandID;
+            span[1] = positionData.UserID;
+
+            // Write floats
+            BitConverter.TryWriteBytes(span.Slice(2, 4), positionData.X);
+            BitConverter.TryWriteBytes(span.Slice(6, 4), positionData.Y);
+            BitConverter.TryWriteBytes(span.Slice(10, 4), positionData.Z);
+            BitConverter.TryWriteBytes(span.Slice(14, 4), positionData.RotY);
+
+            // Create a copy to return (the caller owns this memory)
+            byte[] result = new byte[18];
+            span.Slice(0, 18).CopyTo(result);
+            return result;
+        }
+        finally
+        {
+            // Return buffer to pool
+            _bytePool.Return(buffer);
         }
     }
 
@@ -132,40 +101,59 @@ public static class BinaryUtils
 
     #region PositionDataRTT
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static PositionDataRTT DeserializePositionDataRTT(in byte[] byteArray)
     {
-        if (byteArray.Length < 21) // (1 + 1 + 4 + 4 + 4 + 4 + 4) bytes
+        if (byteArray.Length < 22) // (1 + 1 + 4 + 4 + 4 + 4 + 4) bytes
         {
-            throw new ArgumentException("Byte array is too short to deserialize PositionData.");
+            throw new ArgumentException("Byte array is too short to deserialize PositionDataRTT.");
         }
+
+        // Span<T> for more efficient memory access
+        ReadOnlySpan<byte> dataSpan = byteArray;
 
         return new PositionDataRTT()
         {
-            CommandID = GetCommand(in byteArray), // index 0
-            UserID = _getByte(in byteArray, 1), // index 1
-            X = _getFloat(in byteArray, 2), // index 2 - 5
-            Y = _getFloat(in byteArray, 6), // index 6 - 9 
-            Z = _getFloat(in byteArray, 10), // index 10 - 13
-            RotY = _getFloat(in byteArray, 14), // index 14 - 17
-            TimestampRTT = _getUInt(in byteArray, 18), // index 18 - 21
+            CommandID = (C.Command)dataSpan[0],
+            UserID = dataSpan[1],
+            X = BitConverter.ToSingle(dataSpan.Slice(2, 4)),
+            Y = BitConverter.ToSingle(dataSpan.Slice(6, 4)),
+            Z = BitConverter.ToSingle(dataSpan.Slice(10, 4)),
+            RotY = BitConverter.ToSingle(dataSpan.Slice(14, 4)),
+            TimestampRTT = BitConverter.ToUInt32(dataSpan.Slice(18, 4))
         };
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte[] SerializePositionDataRTT(PositionDataRTT positionData)
     {
+        // Get buffer from pool
+        byte[] buffer = _bytePool.Rent(22);
 
-        using (var memoryStream = new MemoryStream())
-        using (var writer = new BinaryWriter(memoryStream))
+        try
         {
-            writer.Write((byte)positionData.CommandID);
-            writer.Write(positionData.UserID);
-            writer.Write(positionData.X);
-            writer.Write(positionData.Y);
-            writer.Write(positionData.Z);
-            writer.Write(positionData.RotY);
-            writer.Write(positionData.TimestampRTT);
+            Span<byte> span = buffer.AsSpan(0, 22);
 
-            return memoryStream.ToArray();
+            // Write data directly to span
+            span[0] = (byte)positionData.CommandID;
+            span[1] = positionData.UserID;
+
+            // Write floats and uint
+            BitConverter.TryWriteBytes(span.Slice(2, 4), positionData.X);
+            BitConverter.TryWriteBytes(span.Slice(6, 4), positionData.Y);
+            BitConverter.TryWriteBytes(span.Slice(10, 4), positionData.Z);
+            BitConverter.TryWriteBytes(span.Slice(14, 4), positionData.RotY);
+            BitConverter.TryWriteBytes(span.Slice(18, 4), positionData.TimestampRTT);
+
+            // Create a copy to return (the caller owns this memory)
+            byte[] result = new byte[22];
+            span.Slice(0, 22).CopyTo(result);
+            return result;
+        }
+        finally
+        {
+            // Return buffer to pool
+            _bytePool.Return(buffer);
         }
     }
 
@@ -173,6 +161,7 @@ public static class BinaryUtils
 
     #region MoveData
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static MoveData DeserializeMoveData(in byte[] byteArray)
     {
         if (byteArray.Length < 7) // (1 + 1 + 1 + 4) bytes
@@ -180,26 +169,39 @@ public static class BinaryUtils
             throw new ArgumentException("Byte array is too short to deserialize MoveData.");
         }
 
+        ReadOnlySpan<byte> dataSpan = byteArray;
+
         return new MoveData()
         {
-            CommandID = GetCommand(in byteArray), // index 0
-            UserID = _getByte(in byteArray, 1), // index 1
-            DirectionID = _getDirection(in byteArray, 2), // index 2
-            Speed = _getFloat(in byteArray, 3) // index 3 - 6
+            CommandID = (C.Command)dataSpan[0],
+            UserID = dataSpan[1],
+            DirectionID = (D.Direction)dataSpan[2],
+            Speed = BitConverter.ToSingle(dataSpan.Slice(3, 4))
         };
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte[] SerializeMoveData(MoveData moveData)
     {
-        using (var memoryStream = new MemoryStream())
-        using (var writer = new BinaryWriter(memoryStream))
-        {
-            writer.Write((byte)moveData.CommandID);
-            writer.Write(moveData.UserID);
-            writer.Write((byte)moveData.DirectionID);
-            writer.Write(moveData.Speed);
+        byte[] buffer = _bytePool.Rent(7);
 
-            return memoryStream.ToArray();
+        try
+        {
+            Span<byte> span = buffer.AsSpan(0, 7);
+
+            span[0] = (byte)moveData.CommandID;
+            span[1] = moveData.UserID;
+            span[2] = (byte)moveData.DirectionID;
+
+            BitConverter.TryWriteBytes(span.Slice(3, 4), moveData.Speed);
+
+            byte[] result = new byte[7];
+            span.Slice(0, 7).CopyTo(result);
+            return result;
+        }
+        finally
+        {
+            _bytePool.Return(buffer);
         }
     }
 
@@ -207,35 +209,49 @@ public static class BinaryUtils
 
     #region MoveDataRTT
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static MoveDataRTT DeserializeMoveDataRTT(in byte[] byteArray)
     {
-        if (byteArray.Length < 10) // (1 + 1 + 1 + 4) bytes
+        if (byteArray.Length < 11) // (1 + 1 + 1 + 4 + 4) bytes
         {
-            throw new ArgumentException("Byte array is too short to deserialize MoveData.");
+            throw new ArgumentException("Byte array is too short to deserialize MoveDataRTT.");
         }
+
+        ReadOnlySpan<byte> dataSpan = byteArray;
 
         return new MoveDataRTT()
         {
-            CommandID = GetCommand(in byteArray), // index 0
-            UserID = _getByte(in byteArray, 1), // index 1
-            DirectionID = _getDirection(in byteArray, 2), // index 2
-            Speed = _getFloat(in byteArray, 3), // index 3 - 6
-            TimestampRTT = _getUInt(in byteArray, 7), // index 7 - 10
+            CommandID = (C.Command)dataSpan[0],
+            UserID = dataSpan[1],
+            DirectionID = (D.Direction)dataSpan[2],
+            Speed = BitConverter.ToSingle(dataSpan.Slice(3, 4)),
+            TimestampRTT = BitConverter.ToUInt32(dataSpan.Slice(7, 4))
         };
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte[] SerializeMoveDataRTT(MoveDataRTT moveData)
     {
-        using (var memoryStream = new MemoryStream())
-        using (var writer = new BinaryWriter(memoryStream))
-        {
-            writer.Write((byte)moveData.CommandID);
-            writer.Write(moveData.UserID);
-            writer.Write((byte)moveData.DirectionID);
-            writer.Write(moveData.Speed);
-            writer.Write(moveData.TimestampRTT);
+        byte[] buffer = _bytePool.Rent(11);
 
-            return memoryStream.ToArray();
+        try
+        {
+            Span<byte> span = buffer.AsSpan(0, 11);
+
+            span[0] = (byte)moveData.CommandID;
+            span[1] = moveData.UserID;
+            span[2] = (byte)moveData.DirectionID;
+
+            BitConverter.TryWriteBytes(span.Slice(3, 4), moveData.Speed);
+            BitConverter.TryWriteBytes(span.Slice(7, 4), moveData.TimestampRTT);
+
+            byte[] result = new byte[11];
+            span.Slice(0, 11).CopyTo(result);
+            return result;
+        }
+        finally
+        {
+            _bytePool.Return(buffer);
         }
     }
 
@@ -243,17 +259,20 @@ public static class BinaryUtils
 
     #region DefaultRTT
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static DefaultRTT DeserializeDefaultRTT(in byte[] byteArray)
     {
         if (byteArray.Length < 5) // (1 + 4) bytes
         {
-            throw new ArgumentException("Byte array is too short to deserialize MoveData.");
+            throw new ArgumentException("Byte array is too short to deserialize DefaultRTT.");
         }
+
+        ReadOnlySpan<byte> dataSpan = byteArray;
 
         return new DefaultRTT()
         {
-            CommandID = (C.Command)byteArray[0], // index 0
-            TimestampRTT = _getUInt(in byteArray, 1), // index 1 - 4
+            CommandID = (C.Command)dataSpan[0],
+            TimestampRTT = BitConverter.ToUInt32(dataSpan.Slice(1, 4))
         };
     }
 

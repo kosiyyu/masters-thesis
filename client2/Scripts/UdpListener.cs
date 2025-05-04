@@ -6,7 +6,9 @@ using Data;
 using BU = BinaryUtils;
 using C = Command;
 using System.Net;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Threading;
 
 public partial class UdpListener : CharacterBody3D
 {
@@ -14,7 +16,7 @@ public partial class UdpListener : CharacterBody3D
     private const int _clientPortReceive = 22222;
     private const int _clientPortSend = 33333;
     private const string _serverAddress = "127.0.0.1";
-    private const int _tickMs = 1;
+    private const int _targetFPS = 100; // updates per second
 
     private IPEndPoint _serverIP;
     private UdpClient _udpClientReceive;
@@ -24,182 +26,199 @@ public partial class UdpListener : CharacterBody3D
     private byte _dummyUserID = 13;
     private CharacterBody3D _player;
     private uint _sequenceNumber = 0;
-    private Dictionary<uint, ulong> _sentPackets = new Dictionary<uint, ulong>();
-    private float _averageRtt = 0;
+    private ConcurrentDictionary<uint, long> _sentPackets = new ConcurrentDictionary<uint, long>();
+    private double _averageRtt = 0;
     private int _rttSamples = 0;
+
+    private double _timeSinceLastUpdate;
+    private double _targetFrameTime = 1.0 / _targetFPS;
+
+
+    private Vector3 _cachedPosition;
+    private float _cachedRotationY;
+    private readonly object _positionLock = new object();
 
     public override void _PhysicsProcess(double delta)
     {
-        // Movement handling remains the same
-        Vector3 velocity = Velocity;
-        Vector3 direction = Vector3.Zero;
-
-        if (Input.IsActionPressed("ui_up")) direction += -Transform.Basis.Z;
-        if (Input.IsActionPressed("ui_down")) direction += Transform.Basis.Z;
-        if (Input.IsActionPressed("ui_left")) direction += -Transform.Basis.X;
-        if (Input.IsActionPressed("ui_right")) direction += Transform.Basis.X;
-
-        if (direction != Vector3.Zero)
+        // Update cached values in main thread
+        lock (_positionLock)
         {
-            direction = direction.Normalized();
-            velocity.X = direction.X * 10;
-            velocity.Z = direction.Z * 10;
-        }
-        else
-        {
-            velocity.X = Mathf.Lerp(velocity.X, 0f, 0.2f);
-            velocity.Z = Mathf.Lerp(velocity.Z, 0f, 0.2f);
+            _cachedPosition = Position;
+            _cachedRotationY = Rotation.Y;
         }
 
-        Velocity = velocity;
+        Velocity = CalculateMovementVelocity();
         MoveAndSlide();
+    }
+
+    private void SendPositionUpdate()
+    {
+        Vector3 position;
+        float rotationY;
+
+        lock (_positionLock)
+        {
+            position = _cachedPosition;
+            rotationY = _cachedRotationY;
+        }
+
+        var sequence = _sequenceNumber++;
+        var positionData = new PositionDataRTT
+        {
+            CommandID = C.Command.POSITION_RTT,
+            UserID = _dummyUserID,
+            X = position.X,
+            Y = position.Y,
+            Z = position.Z,
+            RotY = rotationY,
+            TimestampRTT = sequence
+        };
+
+        _sentPackets[sequence] = Stopwatch.GetTimestamp();
+
+        try
+        {
+            var byteArray = BU.BinaryUtils.SerializePositionDataRTT(positionData);
+            _udpClientSend.BeginSend(byteArray, byteArray.Length, _serverIP, null, null);
+        }
+        catch
+        {
+            // Todo handle send failures
+        }
+    }
+
+
+    private Vector3 CalculateMovementVelocity()
+    {
+        // Get 2D input vector (-1 to 1 in both axes)
+        Vector2 inputDirection = Input.GetVector("ui_left", "ui_right", "ui_up", "ui_down");
+
+        // Convert to 3D movement direction relative to player rotation
+        Vector3 movementDirection = new Vector3(
+            x: inputDirection.X,
+            y: 0,
+            z: inputDirection.Y
+        ).Normalized();
+
+        // Rotate direction to match camera/player orientation
+        movementDirection = movementDirection.Rotated(Vector3.Up, _player.Rotation.Y);
+
+        return movementDirection * 10f;
     }
 
     public override void _Ready()
     {
-        _player = GetNode<CharacterBody3D>(".");
-        _serverIP = new IPEndPoint(IPAddress.Parse(_serverAddress), _serverPort);
+        _player = this;
+        InitializeNetwork();
+        _isRunning = true;
 
+        // Spawn independent threads
+        Task.Run(NetworkSendLoop);
+        Task.Run(NetworkReceiveLoop);
+    }
+
+    private void InitializeNetwork()
+    {
         try
         {
-            _udpClientReceive = new UdpClient(new IPEndPoint(IPAddress.Any, _clientPortReceive));
-            _udpClientSend = new UdpClient(new IPEndPoint(IPAddress.Any, _clientPortSend));
+            _serverIP = new IPEndPoint(IPAddress.Parse(_serverAddress), _serverPort);
 
-            _udpClientReceive.Client.ReceiveTimeout = 100;
-            _udpClientSend.Client.SendTimeout = 100;
+            _udpClientReceive = new UdpClient(new IPEndPoint(IPAddress.Any, _clientPortReceive))
+            {
+                Client = { ReceiveTimeout = 0 }
+            };
 
-            GD.Print($"Network initialized:");
-            GD.Print($"- Receiving on port: {_clientPortReceive}");
-            GD.Print($"- Sending from port: {_clientPortSend}");
+            _udpClientSend = new UdpClient(new IPEndPoint(IPAddress.Any, _clientPortSend))
+            {
+                Client = { SendTimeout = 0 }
+            };
+
+            GD.Print($"Network initialized (Send: {_clientPortSend}, Receive: {_clientPortReceive})");
         }
         catch (Exception e)
         {
-            GD.PrintErr($"Initialization failed: {e.Message}");
-            return;
+            GD.PrintErr($"Initialization failed: {e}");
         }
-
-        _isRunning = true;
-        _ = RunNetworkLoop();
     }
 
-    private async Task RunNetworkLoop()
+    private async Task NetworkSendLoop()
+    {
+        var timer = new PeriodicTimer(TimeSpan.FromSeconds(_targetFrameTime));
+
+        while (_isRunning)
+        {
+            try
+            {
+                SendPositionUpdate();
+                await timer.WaitForNextTickAsync();
+            }
+            catch (Exception e)
+            {
+                GD.PrintErr($"Send error: {e}");
+            }
+        }
+    }
+
+    private async Task NetworkReceiveLoop()
     {
         while (_isRunning)
         {
             try
             {
-                var sendTask = SendPositionUpdate();
-                var receiveTask = ReceiveData();
-                await Task.WhenAll(sendTask, receiveTask);
+                var result = await _udpClientReceive.ReceiveAsync().ConfigureAwait(false);
+                ProcessPacket(result.Buffer);
+            }
+            catch (SocketException)
+            {
+                //
             }
             catch (Exception e)
             {
-                GD.PrintErr($"Network error: {e.Message}");
+                GD.PrintErr($"Receive error: {e}");
             }
-
-            await Task.Delay(_tickMs);
         }
     }
 
-    private async Task ReceiveData()
+    private void ProcessPacket(byte[] data)
     {
         try
         {
-            // var receiveTask = _udpClientReceive.ReceiveAsync();
-            // var timeoutTask = Task.Delay(1);
-
-            // if (await Task.WhenAny(receiveTask, timeoutTask) == receiveTask)
-            // {
-            //     var result = receiveTask.Result;
-            //     var byteArray = result.Buffer;
-            //     var command = BU.BinaryUtils.GetCommand(in byteArray);
-
-            //     if (command == C.Command.DEFAULT_RTT)
-            //     {
-            //         HandleRttResponse(byteArray);
-            //     }
-            // }
-
-            var result = await _udpClientReceive.ReceiveAsync();
-
-            var byteArray = result.Buffer;
-            var command = BU.BinaryUtils.GetCommand(in byteArray);
-
+            var command = BU.BinaryUtils.GetCommand(data);
             if (command == C.Command.DEFAULT_RTT)
             {
-                HandleRttResponse(byteArray);
+                HandleRttResponse(data);
             }
         }
         catch (Exception e)
         {
-            GD.PrintErr($"Receive error: {e.Message}");
+            GD.PrintErr($"Packet processing error: {e}");
         }
     }
 
     private void HandleRttResponse(byte[] data)
     {
-        try
-        {
-            var response = BU.BinaryUtils.DeserializeDefaultRTT(data);
-            if (_sentPackets.TryGetValue(response.TimestampRTT, out ulong sendTime))
-            {
-                var receiveTime = Time.GetTicksUsec();
-                var rttUs = receiveTime - sendTime;
-                var rttMs = rttUs / 1000f;
+        var response = BU.BinaryUtils.DeserializeDefaultRTT(data);
+        if (!_sentPackets.TryRemove(response.TimestampRTT, out long sendTimestamp)) return;
 
-                _rttSamples++;
-                _averageRtt = (_averageRtt * (_rttSamples - 1) + rttMs) / _rttSamples;
+        var receiveTimestamp = Stopwatch.GetTimestamp();
+        var rttSeconds = (receiveTimestamp - sendTimestamp) / (double)Stopwatch.Frequency;
 
-                GD.Print($"RTT: {rttMs:F2} ms (Seq: {response.TimestampRTT}) | Avg: {_averageRtt:F2} ms | Q: {_udpClientReceive.Available}");
-
-                _sentPackets.Remove(response.TimestampRTT);
-            }
-        }
-        catch (Exception e)
-        {
-            GD.PrintErr($"RTT processing error: {e.Message}");
-        }
+        UpdateRttStatistics(rttSeconds * 1000);
     }
 
-    private async Task SendPositionUpdate()
+    private void UpdateRttStatistics(double newRttMs)
     {
-        try
-        {
-            var sequence = _sequenceNumber++;
-            var positionData = new PositionDataRTT()
-            {
-                CommandID = C.Command.POSITION_RTT,
-                UserID = _dummyUserID,
-                X = _player.Position.X,
-                Y = _player.Position.Y,
-                Z = _player.Position.Z,
-                RotY = _player.Rotation.Y,
-                TimestampRTT = sequence
-            };
+        _rttSamples++;
+        _averageRtt = (_averageRtt * (_rttSamples - 1) + newRttMs) / _rttSamples;
 
-            _sentPackets[sequence] = Time.GetTicksUsec();
-
-            var byteArray = BU.BinaryUtils.SerializePositionDataRTT(positionData);
-            await _udpClientSend.SendAsync(byteArray, byteArray.Length, _serverIP);
-        }
-        catch (Exception e)
-        {
-            GD.PrintErr($"Send error: {e.Message}");
-        }
+        GD.Print($"RTT: {newRttMs:F2}ms | Avg: {_averageRtt:F2}ms");
     }
 
     public override void _ExitTree()
     {
         _isRunning = false;
-        try
-        {
-            _udpClientReceive?.Close();
-            _udpClientSend?.Close();
-            GD.Print("Network resources cleaned up");
-        }
-        catch (Exception e)
-        {
-            GD.PrintErr($"Cleanup error: {e.Message}");
-        }
+        _udpClientReceive?.Close();
+        _udpClientSend?.Close();
+        GD.Print("Network shutdown complete");
     }
 }
