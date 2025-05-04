@@ -6,6 +6,7 @@ using Data;
 using BU = BinaryUtils;
 using C = Command;
 using System.Net;
+using System.Collections.Generic;
 
 public partial class UdpListener : CharacterBody3D
 {
@@ -13,18 +14,23 @@ public partial class UdpListener : CharacterBody3D
     private const int _clientPortReceive = 22222;
     private const int _clientPortSend = 33333;
     private const string _serverAddress = "127.0.0.1";
-    private const int _tickMs = 10;
-    private bool _isRunning = false;
+    private const int _tickMs = 50;
 
     private IPEndPoint _serverIP;
     private UdpClient _udpClientReceive;
     private UdpClient _udpClientSend;
+    private bool _isRunning = false;
 
     private byte _dummyUserID = 13;
     private CharacterBody3D _player;
+    private uint _sequenceNumber = 0;
+    private Dictionary<uint, ulong> _sentPackets = new Dictionary<uint, ulong>();
+    private float _averageRtt = 0;
+    private int _rttSamples = 0;
 
     public override void _PhysicsProcess(double delta)
     {
+        // Movement handling remains the same
         Vector3 velocity = Velocity;
         Vector3 direction = Vector3.Zero;
 
@@ -53,101 +59,137 @@ public partial class UdpListener : CharacterBody3D
     {
         _player = GetNode<CharacterBody3D>(".");
         _serverIP = new IPEndPoint(IPAddress.Parse(_serverAddress), _serverPort);
-        _udpClientReceive = new UdpClient(_clientPortReceive);
-        _udpClientSend = new UdpClient(_clientPortSend);
-        _isRunning = true;
-        _run();
-    }
 
-    private async Task _receiveData()
-    {
-        UdpReceiveResult result = await _udpClientReceive.ReceiveAsync();
-        if (result.Buffer is null)
+        try
         {
-            GD.PushError($"Received buffer is null.");
+            _udpClientReceive = new UdpClient(new IPEndPoint(IPAddress.Any, _clientPortReceive));
+            _udpClientSend = new UdpClient(new IPEndPoint(IPAddress.Any, _clientPortSend));
+
+            _udpClientReceive.Client.ReceiveTimeout = 100;
+            _udpClientSend.Client.SendTimeout = 100;
+
+            GD.Print($"Network initialized:");
+            GD.Print($"- Receiving on port: {_clientPortReceive}");
+            GD.Print($"- Sending from port: {_clientPortSend}");
+        }
+        catch (Exception e)
+        {
+            GD.PrintErr($"Initialization failed: {e.Message}");
             return;
         }
 
-        var byteArray = result.Buffer;
-        var command = BU.BinaryUtils.GetCommand(in byteArray);
-        switch (command)
-        {
-            case C.Command.DEFAULT_RTT:
-                var defaultRTT = BU.BinaryUtils.DeserializeDefaultRTT(result.Buffer);
-                GD.Print($"{command} | Received: {defaultRTT}");
-                break;
-            case C.Command.MOVE:
-                var moveData = BU.BinaryUtils.DeserializeMoveData(result.Buffer);
-                GD.Print($"{command} | Received: {moveData}");
-                break;
-            case C.Command.POSITION:
-                var positionData = BU.BinaryUtils.DeserializePositionData(result.Buffer);
-                GD.Print($"{command} | Received: {positionData}");
-                break;
-            case C.Command.MOVE_RTT:
-                var moveDataRTT = BU.BinaryUtils.DeserializeMoveDataRTT(result.Buffer);
-                GD.Print($"{command} | Received: {moveDataRTT}");
-                break;
-            case C.Command.POSITION_RTT:
-                var positionDataRTT = BU.BinaryUtils.DeserializePositionDataRTT(result.Buffer);
-                GD.Print($"{command} | Received: {positionDataRTT}");
-                break;
-            default:
-                GD.PushError("Unknown command.");
-                break;
-        }
+        _isRunning = true;
+        _ = RunNetworkLoop();
     }
 
-    private async Task _sendData()
-    {
-        var positionDataRTT = new PositionDataRTT()
-        {
-            CommandID = C.Command.POSITION,
-            UserID = _dummyUserID,
-            X = _player.Position.X,
-            Y = _player.Position.Y,
-            Z = _player.Position.Z,
-            RotY = _player.Rotation.Y,
-            TimestampRTT = (uint)Time.GetTicksUsec()
-        };
-        var byteArray = BU.BinaryUtils.SerializePositionDataRTT(positionDataRTT);
-
-        await _udpClientSend.SendAsync(byteArray, byteArray.Length, _serverIP);
-
-        GD.Print($"Sent data: {positionDataRTT}");
-    }
-
-    private async void _run()
+    private async Task RunNetworkLoop()
     {
         while (_isRunning)
         {
             try
             {
-                await _sendData();
-
-                if (_udpClientReceive.Available > 0)
-                {
-                    await _receiveData();
-                }
-            }
-            catch (ObjectDisposedException e)
-            {
-                GD.PrintErr($"Error 0 receiving data: {e.Message}");
-                break;
+                var sendTask = SendPositionUpdate();
+                var receiveTask = ReceiveData();
+                await Task.WhenAll(sendTask, receiveTask);
             }
             catch (Exception e)
             {
-                GD.PrintErr($"Error 1 receiving data: {e.Message}");
+                GD.PrintErr($"Network error: {e.Message}");
             }
 
             await Task.Delay(_tickMs);
         }
     }
 
+    private async Task ReceiveData()
+    {
+        try
+        {
+            var receiveTask = _udpClientReceive.ReceiveAsync();
+            var timeoutTask = Task.Delay(1);
+
+            if (await Task.WhenAny(receiveTask, timeoutTask) == receiveTask)
+            {
+                var result = receiveTask.Result;
+                var byteArray = result.Buffer;
+                var command = BU.BinaryUtils.GetCommand(in byteArray);
+
+                if (command == C.Command.DEFAULT_RTT)
+                {
+                    HandleRttResponse(byteArray);
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            GD.PrintErr($"Receive error: {e.Message}");
+        }
+    }
+
+    private void HandleRttResponse(byte[] data)
+    {
+        try
+        {
+            var response = BU.BinaryUtils.DeserializeDefaultRTT(data);
+            if (_sentPackets.TryGetValue(response.TimestampRTT, out ulong sendTime))
+            {
+                var receiveTime = Time.GetTicksUsec();
+                var rttUs = receiveTime - sendTime;
+                var rttMs = rttUs / 1000f;
+
+                _rttSamples++;
+                _averageRtt = (_averageRtt * (_rttSamples - 1) + rttMs) / _rttSamples;
+
+                GD.Print($"RTT: {rttMs:F2} ms (Seq: {response.TimestampRTT}) | Avg: {_averageRtt:F2} ms | Q: {_udpClientReceive.Available}");
+
+                _sentPackets.Remove(response.TimestampRTT);
+            }
+        }
+        catch (Exception e)
+        {
+            GD.PrintErr($"RTT processing error: {e.Message}");
+        }
+    }
+
+    private async Task SendPositionUpdate()
+    {
+        try
+        {
+            var sequence = _sequenceNumber++;
+            var positionData = new PositionDataRTT()
+            {
+                CommandID = C.Command.POSITION_RTT,
+                UserID = _dummyUserID,
+                X = _player.Position.X,
+                Y = _player.Position.Y,
+                Z = _player.Position.Z,
+                RotY = _player.Rotation.Y,
+                TimestampRTT = sequence
+            };
+
+            _sentPackets[sequence] = Time.GetTicksUsec();
+
+            var byteArray = BU.BinaryUtils.SerializePositionDataRTT(positionData);
+            await _udpClientSend.SendAsync(byteArray, byteArray.Length, _serverIP);
+        }
+        catch (Exception e)
+        {
+            GD.PrintErr($"Send error: {e.Message}");
+        }
+    }
+
     public override void _ExitTree()
     {
         _isRunning = false;
-        _udpClientReceive?.Close();
-        _udpClientSend?.Close();
+        try
+        {
+            _udpClientReceive?.Close();
+            _udpClientSend?.Close();
+            GD.Print("Network resources cleaned up");
+        }
+        catch (Exception e)
+        {
+            GD.PrintErr($"Cleanup error: {e.Message}");
+        }
     }
 }

@@ -21,7 +21,6 @@ public static class BinaryUtils
             throw new ArgumentException("Start index value is incorrect.");
         }
 
-
         return byteArray[startIndex];
 
     }
@@ -37,7 +36,6 @@ public static class BinaryUtils
             throw new ArgumentException("Start index value is incorrect.");
         }
 
-
         return BitConverter.ToSingle(byteArray, startIndex);
     }
 
@@ -51,7 +49,6 @@ public static class BinaryUtils
         {
             throw new ArgumentException("Start index value is incorrect.");
         }
-
 
         return BitConverter.ToUInt32(byteArray, startIndex);
     }
@@ -156,6 +153,7 @@ public static class BinaryUtils
 
     public static byte[] SerializePositionDataRTT(PositionDataRTT positionData)
     {
+
         using (var memoryStream = new MemoryStream())
         using (var writer = new BinaryWriter(memoryStream))
         {
@@ -254,8 +252,8 @@ public static class BinaryUtils
 
         return new DefaultRTT()
         {
-            CommandID = GetCommand(in byteArray), // index 0
-            TimestampRTT = _getByte(in byteArray, 1), // index 1 - 4
+            CommandID = (C.Command)byteArray[0], // index 0
+            TimestampRTT = _getUInt(in byteArray, 1), // index 1 - 4
         };
     }
 
