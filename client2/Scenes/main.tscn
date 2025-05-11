@@ -51,6 +51,10 @@ size = Vector3(16, 1, 16)
 
 [node name="PlayerManager" type="Node3D" parent="."]
 
-[node name="Player" parent="PlayerManager" instance=ExtResource("1_jjgbg")]
+[node name="CSGBox3D" type="CSGBox3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.75, 5.15)
+size = Vector3(1, 2.5, 3.3)
+
+[node name="Player" parent="." instance=ExtResource("1_jjgbg")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 script = ExtResource("2_bo1nx")

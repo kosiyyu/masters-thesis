@@ -2,8 +2,10 @@ package data
 
 import (
 	"fmt"
+	"net"
 	"server/utils/command"
 	"server/utils/direction"
+	"time"
 )
 
 //region structs
@@ -47,6 +49,27 @@ type DefaultRTT struct {
 	TimestampRTT uint32
 }
 
+type UserAssignment struct {
+	CommandID command.Command
+	UserID    uint8
+}
+
+type PortAssignment struct {
+	CommandID command.Command
+	UserID    uint8
+	Port      uint16
+}
+
+//endregion
+
+// region PlayerState
+
+type PlayerState struct {
+	Data     PositionDataRTT
+	Addr     *net.UDPAddr
+	LastSeen time.Time
+}
+
 //endregion
 
 //region print
@@ -73,6 +96,19 @@ func (m MoveDataRTT) Print() {
 
 func (d DefaultRTT) Print() {
 	fmt.Printf("DefaultRTT{CommandID: %v, TimestampRTT: %v}\n", d.CommandID, d.TimestampRTT)
+}
+
+func (u UserAssignment) Print() {
+	fmt.Printf("UserAssignment{CommandID: %v, UserID: %v}\n", u.CommandID, u.UserID)
+}
+
+func (p PortAssignment) Print() {
+	fmt.Printf("PortAssignment{CommandID: %v, UserID: %v, Port: %v}\n", p.CommandID, p.UserID, p.Port)
+}
+
+func (p PlayerState) Print() {
+	fmt.Printf("PlayerState{Data: %v, Addr: %v, LastSeen: %v}\n",
+		p.Data, p.Addr, p.LastSeen)
 }
 
 //endregion

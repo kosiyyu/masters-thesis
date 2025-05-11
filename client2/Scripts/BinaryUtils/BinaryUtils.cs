@@ -277,4 +277,62 @@ public static class BinaryUtils
     }
 
     #endregion
+
+    #region UserAssignment
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static UserAssignment DeserializeUserAssignment(in byte[] byteArray)
+    {
+        if (byteArray.Length < 2) // (1 + 1) bytes
+        {
+            throw new ArgumentException("Byte array is too short to deserialize UserAssignment.");
+        }
+
+        ReadOnlySpan<byte> dataSpan = byteArray;
+
+        return new UserAssignment()
+        {
+            CommandID = (C.Command)dataSpan[0],
+            UserID = dataSpan[1],
+        };
+    }
+
+    #endregion
+
+    #region PortAssignment
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static PortAssignment DeserializePortAssignment(in byte[] byteArray)
+    {
+        if (byteArray.Length < 4) // (1 + 1 + 2) bytes for Command, UserID, and Port
+        {
+            throw new ArgumentException("Byte array is too short to deserialize PortAssignment.");
+        }
+
+        ReadOnlySpan<byte> dataSpan = byteArray;
+
+        return new PortAssignment()
+        {
+            CommandID = (C.Command)dataSpan[0],
+            UserID = dataSpan[1],
+            Port = BitConverter.ToUInt16(dataSpan.Slice(2, 2)) // Read 2 bytes for Port
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] SerializePortAssignment(in Data.PortAssignment assignment)
+    {
+        byte[] result = new byte[4]; // Total size: 1 + 1 + 2 = 4 bytes
+
+        result[0] = (byte)assignment.CommandID;
+        result[1] = assignment.UserID;
+
+        // Write Port (2 bytes)
+        BitConverter.TryWriteBytes(new Span<byte>(result, 2, 2), assignment.Port);
+
+        return result;
+    }
+
+    #endregion
+
 }

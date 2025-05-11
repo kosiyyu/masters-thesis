@@ -78,4 +78,29 @@ public struct DefaultRTT
     }
 }
 
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct UserAssignment
+{
+    public C.Command CommandID;
+    public byte UserID;
+
+    public override string ToString()
+    {
+        return $"CommandID: {CommandID}, UserID: {UserID}";
+    }
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct PortAssignment
+{
+    public C.Command CommandID;
+    public byte UserID;
+    public ushort Port;
+
+    public override string ToString()
+    {
+        return $"CommandID: {CommandID}, UserID: {UserID}, Port: {Port}";
+    }
+}
+
 

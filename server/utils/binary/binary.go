@@ -133,6 +133,36 @@ func DeserializePostitionData(reader *bytes.Reader) (data.PositionData, error) {
 	}, nil
 }
 
+func SerializePositionData(positionData data.PositionData) ([]byte, error) {
+	buf := new(bytes.Buffer)
+
+	if err := binary.Write(buf, binary.LittleEndian, positionData.CommandID); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, positionData.UserID); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, positionData.X); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, positionData.Y); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, positionData.Z); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, positionData.RotY); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
 //endregion
 
 // region PostitionDataRTT
@@ -190,6 +220,40 @@ func DeserializePostitionDataRTT(reader *bytes.Reader) (data.PositionDataRTT, er
 	}, nil
 }
 
+func SerializePositionDataRTT(positionData data.PositionDataRTT) ([]byte, error) {
+	buf := new(bytes.Buffer)
+
+	if err := binary.Write(buf, binary.LittleEndian, positionData.CommandID); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, positionData.UserID); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, positionData.X); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, positionData.Y); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, positionData.Z); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, positionData.RotY); err != nil {
+		return nil, err
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, positionData.TimestampRTT); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
 //endregion
 
 // region MoveData
@@ -235,7 +299,6 @@ func DeserializeMoveData(reader *bytes.Reader) (data.MoveData, error) {
 
 func DeserializeMoveDataRTT(reader *bytes.Reader) (data.MoveDataRTT, error) {
 	const size int = 7 // (1 + 1 + 1 + 4) bytes
-
 	if reader.Len() < size {
 		return data.MoveDataRTT{}, errors.New("byte array is too short, expected " + strconv.Itoa(size) + " bytes, received " + strconv.Itoa(reader.Len()) + " bytes")
 	}
@@ -291,6 +354,93 @@ func SerializeDefaultRTT(defaultRTT data.DefaultRTT) ([]byte, error) {
 		return nil, fmt.Errorf("failed to write TimestampRTT: %v", err)
 	}
 
+	return buf.Bytes(), nil
+}
+
+//endregion
+
+//region UserAssignment
+
+func DeserializeUserAssignment(reader *bytes.Reader) (data.UserAssignment, error) {
+	const size = 2 // 1 + 1 bytes
+	if reader.Len() < size {
+		return data.UserAssignment{}, fmt.Errorf("expected %d bytes, got %d", size, reader.Len())
+	}
+
+	commandID, err := convUint8(reader)
+	if err != nil {
+		return data.UserAssignment{}, err
+	}
+
+	userID, err := convUint8(reader)
+	if err != nil {
+		return data.UserAssignment{}, err
+	}
+
+	return data.UserAssignment{
+		CommandID: command.Command(commandID),
+		UserID:    userID,
+	}, nil
+}
+
+func SerializeUserAssignment(ua data.UserAssignment) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	if err := binary.Write(buf, binary.LittleEndian, ua.CommandID); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.LittleEndian, ua.UserID); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+//endregion
+
+//region PortAssignment
+
+func DeserializePortAssignment(reader *bytes.Reader) (data.PortAssignment, error) {
+	const size = 4 // 1 + 1 + 2 bytes
+	if reader.Len() < size {
+		return data.PortAssignment{}, fmt.Errorf("expected %d bytes, got %d", size, reader.Len())
+	}
+
+	commandID, err := convUint8(reader)
+	if err != nil {
+		return data.PortAssignment{}, err
+	}
+
+	userID, err := convUint8(reader)
+	if err != nil {
+		return data.PortAssignment{}, err
+	}
+
+	var portBytes [2]byte
+	_, err = reader.Read(portBytes[:])
+	if err != nil {
+		return data.PortAssignment{}, err
+	}
+
+	// Convert to uint16 using LittleEndian
+	port := binary.LittleEndian.Uint16(portBytes[:])
+
+	return data.PortAssignment{
+		CommandID: command.Command(commandID),
+		UserID:    userID,
+		Port:      port,
+	}, nil
+}
+
+func SerializePortAssignment(pa data.PortAssignment) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	if err := binary.Write(buf, binary.LittleEndian, pa.CommandID); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.LittleEndian, pa.UserID); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.LittleEndian, pa.Port); err != nil {
+		return nil, err
+	}
 	return buf.Bytes(), nil
 }
 
