@@ -1,7 +1,6 @@
-[gd_scene load_steps=6 format=3 uid="uid://ctbtrsglsfhvs"]
+[gd_scene load_steps=5 format=3 uid="uid://ctbtrsglsfhvs"]
 
-[ext_resource type="PackedScene" uid="uid://bcjyixo7rcxrq" path="res://Scenes/player.tscn" id="1_jjgbg"]
-[ext_resource type="Script" uid="uid://bvj1varesng6v" path="res://Scripts/UdpListener.cs" id="2_bo1nx"]
+[ext_resource type="Script" uid="uid://bvj1varesng6v" path="res://Scripts/PlayersManager.cs" id="1_jjgbg"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_7dm0k"]
 sky_horizon_color = Color(0.662243, 0.671743, 0.686743, 1)
@@ -49,12 +48,11 @@ size = Vector3(14, 1, 1)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0500016, 0, -4.76837e-07)
 size = Vector3(16, 1, 16)
 
-[node name="PlayerManager" type="Node3D" parent="."]
-
 [node name="CSGBox3D" type="CSGBox3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.75, 5.15)
 size = Vector3(1, 2.5, 3.3)
 
-[node name="Player" parent="." instance=ExtResource("1_jjgbg")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
-script = ExtResource("2_bo1nx")
+[node name="PlayersManager" type="Node3D" parent="."]
+script = ExtResource("1_jjgbg")
+
+[node name="PlayerContainer" type="Node3D" parent="."]
