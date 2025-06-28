@@ -14,7 +14,7 @@ using System.Collections.Generic;
 public partial class PlayersManager : Node3D
 {
 	// Networking constants
-	private const int _serverPort = 9000;
+	private const int _serverPort = 8080;
 	private const string _serverAddress = "127.0.0.1";
 	private const int _targetFPS = 100; // updates per second
 

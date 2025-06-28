@@ -12,3 +12,11 @@ const (
 	PORT_REQUEST                   // 6
 	PORT_ASSIGNMENT                // 7
 )
+
+func (c Command) String() string {
+	commands := []string{"POSITION", "MOVE", "POSITION_RTT", "MOVE_RTT", "DEFAULT_RTT", "USER_ASSIGNMENT", "PORT_REQUEST", "PORT_ASSIGNMENT"}
+	if int(c) < len(commands) {
+		return commands[c]
+	}
+	return "Unknown"
+}
