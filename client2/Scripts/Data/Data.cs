@@ -7,100 +7,98 @@ using D = Direction;
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct PositionData
 {
-    public C.Command CommandID;
-    public byte UserID;
-    public float X;
-    public float Y;
-    public float Z;
-    public float RotY;
+	public C.Command CommandID;
+	public byte UserID;
+	public float X;
+	public float Y;
+	public float Z;
+	public float RotY;
 
-    public override string ToString()
-    {
-        return $"CommandID: {CommandID}, UserID: {UserID}, X: {X}, Y: {Y}, Z: {Z}, RotY: {RotY}";
-    }
+	public override string ToString()
+	{
+		return $"CommandID: {CommandID}, UserID: {UserID}, X: {X}, Y: {Y}, Z: {Z}, RotY: {RotY}";
+	}
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct PositionDataRTT
 {
-    public C.Command CommandID;
-    public byte UserID;
-    public float X;
-    public float Y;
-    public float Z;
-    public float RotY;
-    public uint TimestampRTT;
+	public C.Command CommandID;
+	public byte UserID;
+	public float X;
+	public float Y;
+	public float Z;
+	public float RotY;
+	public uint TimestampRTT;
 
-    public override string ToString()
-    {
-        return $"CommandID: {CommandID}, UserID: {UserID}, X: {X}, Y: {Y}, Z: {Z}, RotY: {RotY} | TimestampRTT: {TimestampRTT}";
-    }
+	public override string ToString()
+	{
+		return $"CommandID: {CommandID}, UserID: {UserID}, X: {X}, Y: {Y}, Z: {Z}, RotY: {RotY} | TimestampRTT: {TimestampRTT}";
+	}
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct MoveData
 {
-    public C.Command CommandID;
-    public byte UserID;
-    public D.Direction DirectionID;
-    public float Speed;
+	public C.Command CommandID;
+	public byte UserID;
+	public D.Direction DirectionID;
+	public float Speed;
 
-    public override string ToString()
-    {
-        return $"CommandID: {CommandID}, UserID: {UserID}, DirectionID: {DirectionID}, Speed: {Speed}";
-    }
+	public override string ToString()
+	{
+		return $"CommandID: {CommandID}, UserID: {UserID}, DirectionID: {DirectionID}, Speed: {Speed}";
+	}
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct MoveDataRTT
 {
-    public C.Command CommandID;
-    public byte UserID;
-    public D.Direction DirectionID;
-    public float Speed;
-    public uint TimestampRTT;
+	public C.Command CommandID;
+	public byte UserID;
+	public D.Direction DirectionID;
+	public float Speed;
+	public uint TimestampRTT;
 
-    public override string ToString()
-    {
-        return $"CommandID: {CommandID}, UserID: {UserID}, DirectionID: {DirectionID}, Speed: {Speed} | TimestampRTT: {TimestampRTT}";
-    }
+	public override string ToString()
+	{
+		return $"CommandID: {CommandID}, UserID: {UserID}, DirectionID: {DirectionID}, Speed: {Speed} | TimestampRTT: {TimestampRTT}";
+	}
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct DefaultRTT
 {
-    public C.Command CommandID;
-    public uint TimestampRTT;
+	public C.Command CommandID;
+	public uint TimestampRTT;
 
-    public override string ToString()
-    {
-        return $"CommandID: {CommandID} | TimestampRTT: {TimestampRTT}";
-    }
+	public override string ToString()
+	{
+		return $"CommandID: {CommandID} | TimestampRTT: {TimestampRTT}";
+	}
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct UserAssignment
 {
-    public C.Command CommandID;
-    public byte UserID;
+	public C.Command CommandID;
+	public byte UserID;
 
-    public override string ToString()
-    {
-        return $"CommandID: {CommandID}, UserID: {UserID}";
-    }
+	public override string ToString()
+	{
+		return $"CommandID: {CommandID}, UserID: {UserID}";
+	}
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct PortAssignment
 {
-    public C.Command CommandID;
-    public byte UserID;
-    public ushort Port;
+	public C.Command CommandID;
+	public byte UserID;
+	public ushort Port;
 
-    public override string ToString()
-    {
-        return $"CommandID: {CommandID}, UserID: {UserID}, Port: {Port}";
-    }
+	public override string ToString()
+	{
+		return $"CommandID: {CommandID}, UserID: {UserID}, Port: {Port}";
+	}
 }
-
-
